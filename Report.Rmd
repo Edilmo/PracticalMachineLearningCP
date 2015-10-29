@@ -1,0 +1,138 @@
+---
+title: "Report"
+output: html_document
+---
+
+
+First, lets get the data clean.
+```{r echo=FALSE, cache=TRUE}
+# DOwnloading the data sets if necessary
+if(!file.exists("pml-training.csv"))
+{
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv", "curl")
+}
+if(!file.exists("pml-testing.csv"))
+{
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv", "curl")
+}
+# Loading the data sets
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+# Deleting sumarization variables in the training data
+training <- training[,-grep("kurtosis", names(training))]
+training <- training[,-grep("skewness", names(training))]
+training <- training[,-grep("max", names(training))]
+training <- training[,-grep("min", names(training))]
+training <- training[,-grep("amplitude", names(training))]
+training <- training[,-grep("var", names(training))]
+training <- training[,-grep("avg", names(training))]
+training <- training[,-grep("stddev", names(training))]
+# Deleting sumarization variables in the testing data
+testing <- testing[,-grep("kurtosis", names(testing))]
+testing <- testing[,-grep("skewness", names(testing))]
+testing <- testing[,-grep("max", names(testing))]
+testing <- testing[,-grep("min", names(testing))]
+testing <- testing[,-grep("amplitude", names(testing))]
+testing <- testing[,-grep("var", names(testing))]
+testing <- testing[,-grep("avg", names(testing))]
+testing <- testing[,-grep("stddev", names(testing))]
+# Deleting timestamp data from both data sets
+training <- training[,-grep("timestamp", names(training))]
+testing <- testing[,-grep("timestamp", names(testing))]
+# Deleting window data from both data sets
+training <- training[,-grep("window", names(training))]
+testing <- testing[,-grep("window", names(testing))]
+# Deleting X variable from both data sets
+training <- training[,-1]
+testing <- testing[,-1]
+# Deleting User Name variable from both data sets
+training <- training[,-1]
+testing <- testing[,-1]
+# Factor total_accel variables
+training$total_accel_belt <- factor(training$total_accel_belt)
+training$total_accel_arm <- factor(training$total_accel_arm)
+training$total_accel_dumbbell <- factor(training$total_accel_dumbbell)
+training$total_accel_forearm <- factor(training$total_accel_forearm)
+
+testing$total_accel_belt <- factor(testing$total_accel_belt)
+testing$total_accel_arm <- factor(testing$total_accel_arm)
+testing$total_accel_dumbbell <- factor(testing$total_accel_dumbbell)
+testing$total_accel_forearm <- factor(testing$total_accel_forearm)
+```
+
+
+Now lets gets some cross validation data sets.
+```{r, echo=FALSE, cache=TRUE}
+library(caret)
+set.seed(32343)
+
+# Let's create our cross validation data sets
+inTrain <- createDataPartition(y=training$classe,
+                              p=0.60, list=FALSE)
+train <- training[inTrain,]
+testTemp <- training[-inTrain,]
+inTest <- createDataPartition(y=testTemp$classe,
+                              p=0.50, list=FALSE)
+test <- testTemp[-inTest,]
+validate <- testTemp[-inTest,]
+```
+
+At this point lets reduce the dimensionality of our data set using PCA.
+
+```{r, echo=FALSE, cache=TRUE}
+tempNames <- names(train)[-grep("total_accel", names(train))]
+preProcBelt <- preProcess(train[,tempNames[grep("_belt", tempNames)]],method="pca", thresh = 0.80)
+preProcForearm <- preProcess(train[,tempNames[grep("_forearm", tempNames)]],method="pca", thresh = 0.80)
+preProcDumbbell <- preProcess(train[,tempNames[grep("_dumbbell", tempNames)]],method="pca", thresh = 0.80)
+preProcArm <- preProcess(train[,c(tempNames[grep("_arm_", tempNames)], tempNames[grep("_arm$", tempNames)])],method="pca", thresh = 0.80)
+
+```
+
+- The variables measured by the Belt Sensor are `r preProcBelt$dim[2]`. And the number of Principal Components are `r preProcBelt$numComp`.
+- The variables measured by the Belt Sensor are `r preProcForearm$dim[2]`. And the number of Principal Components are `r preProcForearm$numComp`.
+- The variables measured by the Belt Sensor are `r preProcDumbbell$dim[2]`. And the number of Principal Components are `r preProcDumbbell$numComp`.
+- The variables measured by the Belt Sensor are `r preProcArm$dim[2]`. And the number of Principal Components are `r preProcArm$numComp`.
+
+Now, let's use our new components to generate new training data using that dimensions:
+
+```{r, echo=FALSE, cache=TRUE}
+trainBelt <- predict(preProcBelt,train[,tempNames[grep("_belt", tempNames)]])
+trainForearm <- predict(preProcForearm,train[,tempNames[grep("_forearm", tempNames)]])
+trainDumbbell <- predict(preProcDumbbell,train[,tempNames[grep("_dumbbell", tempNames)]])
+trainArm <- predict(preProcArm,train[,c(tempNames[grep("_arm_", tempNames)], tempNames[grep("_arm$", tempNames)])])
+```
+
+Let's fit a model using "rf":
+
+```{r, echo=FALSE, cache=TRUE}
+trainAllPCA <- data.frame(trainArm, trainDumbbell, trainForearm, trainBelt, classe=train$classe)
+modFitAllPCA <- train(classe ~ ., data=trainAllPCA, method="rf")
+```
+
+Now let's test our model with the cross validation data:
+
+```{r, echo=FALSE, cache=TRUE}
+testBelt <- predict(preProcBelt, test[,tempNames[grep("_belt", tempNames)]])
+testForearm <- predict(preProcForearm, test[,tempNames[grep("_forearm", tempNames)]])
+testDumbbell <- predict(preProcDumbbell, test[,tempNames[grep("_dumbbell", tempNames)]])
+testArm <- predict(preProcArm, test[,c(tempNames[grep("_arm_", tempNames)], tempNames[grep("_arm$", tempNames)])])
+
+testAllPCA <- data.frame(testArm, testDumbbell, testForearm, testBelt, classe=test$classe)
+testPredAllPCA <- predict(modFitAllPCA,testAllPCA)
+confMtxTestAllPCA <- confusionMatrix(test$classe, testPredAllPCA)
+
+validateBelt <- predict(preProcBelt, validate[,tempNames[grep("_belt", tempNames)]])
+validateForearm <- predict(preProcForearm, validate[,tempNames[grep("_forearm", tempNames)]])
+validateDumbbell <- predict(preProcDumbbell, validate[,tempNames[grep("_dumbbell", tempNames)]])
+validateArm <- predict(preProcArm, validate[,c(tempNames[grep("_arm_", tempNames)], tempNames[grep("_arm$", tempNames)])])
+
+validateAllPCA <- data.frame(validateArm, validateDumbbell, validateForearm, validateBelt, classe=validate$classe)
+validatePredAllPCA <- predict(modFitAllPCA,validateAllPCA)
+confMtxValidateAllPCA <- confusionMatrix(validate$classe, validatePredAllPCA)
+```
+
+
+```{r, echo=FALSE, cache=TRUE}
+```
+
+
