@@ -1,0 +1,125 @@
+Report - Practical Machine Learning Project
+========================================================
+author: Edilmo Palencia
+date: 11/20/2015
+
+Final Results
+
+Introduction
+========================================================
+
+A model to classify the Unilateral Dumbbell Biceps Curl was built.  
+
+Six participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: 
+
+- Class A: exactly according to the specification
+- Class B: throwing the elbows to the front.
+- Class C: lifting the dumbbell only halfway.
+- Class D: lowering the dumbbell only halfway.
+- Class E: throwing the hips to the front.
+```{r echo=FALSE, cache=TRUE}
+# DOwnloading the data sets if necessary
+if(!file.exists("pml-training.csv"))
+{
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv", "curl")
+}
+if(!file.exists("pml-testing.csv"))
+{
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv", "curl")
+}
+# Loading the data sets
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+# Deleting sumarization variables in the training data
+training <- training[,-grep("kurtosis", names(training))]
+training <- training[,-grep("skewness", names(training))]
+training <- training[,-grep("max", names(training))]
+training <- training[,-grep("min", names(training))]
+training <- training[,-grep("amplitude", names(training))]
+training <- training[,-grep("var", names(training))]
+training <- training[,-grep("avg", names(training))]
+training <- training[,-grep("stddev", names(training))]
+# Deleting sumarization variables in the testing data
+testing <- testing[,-grep("kurtosis", names(testing))]
+testing <- testing[,-grep("skewness", names(testing))]
+testing <- testing[,-grep("max", names(testing))]
+testing <- testing[,-grep("min", names(testing))]
+testing <- testing[,-grep("amplitude", names(testing))]
+testing <- testing[,-grep("var", names(testing))]
+testing <- testing[,-grep("avg", names(testing))]
+testing <- testing[,-grep("stddev", names(testing))]
+# Deleting timestamp data from both data sets
+training <- training[,-grep("timestamp", names(training))]
+testing <- testing[,-grep("timestamp", names(testing))]
+# Deleting window data from both data sets
+training <- training[,-grep("window", names(training))]
+testing <- testing[,-grep("window", names(testing))]
+# Deleting X variable from both data sets
+training <- training[,-1]
+testing <- testing[,-1]
+# Deleting User Name variable from both data sets
+training <- training[,-1]
+testing <- testing[,-1]
+# Factor total_accel variables
+training$total_accel_belt <- factor(training$total_accel_belt)
+training$total_accel_arm <- factor(training$total_accel_arm)
+training$total_accel_dumbbell <- factor(training$total_accel_dumbbell)
+training$total_accel_forearm <- factor(training$total_accel_forearm)
+
+testing$total_accel_belt <- factor(testing$total_accel_belt)
+testing$total_accel_arm <- factor(testing$total_accel_arm)
+testing$total_accel_dumbbell <- factor(testing$total_accel_dumbbell)
+testing$total_accel_forearm <- factor(testing$total_accel_forearm)
+```
+```{r, echo=FALSE, cache=TRUE}
+library(caret)
+set.seed(32343)
+
+# Let's create our cross validation data sets
+inTrain <- createDataPartition(y=training$classe,
+                              p=0.60, list=FALSE)
+train <- training[inTrain,]
+testTemp <- training[-inTrain,]
+inTest <- createDataPartition(y=testTemp$classe,
+                              p=0.50, list=FALSE)
+test <- testTemp[-inTest,]
+validate <- testTemp[-inTest,]
+
+library(ggplot2)
+tempNames <- names(train)[-grep("total_accel", names(train))]
+```
+
+Hypothesis
+========================================================
+
+**The presence of one movement can be detected with a specific subset of measures in a specific subset of sensors.**
+
+In order to validated this hypothesis a [Shiny application](https://edilmo.shinyapps.io/PracticalMachineLearningCP) was built to run some exploratory analysis.  
+This application allows to perform:
+- Cluster analysis: using k-means
+- Dimensionality analysis: using PCA
+
+
+Cluster analysis example
+========================================================
+```{r, echo=TRUE, cache=TRUE}
+kmeansBelt <- kmeans(train[,tempNames[grep("_belt", tempNames)]], centers = 5)
+image(t(train[,tempNames[grep("_belt", tempNames)]])[, order(kmeansBelt$cluster)], yaxt = "n", main = "Clustered Data for Belt Sensor")
+```
+
+
+
+Results
+========================================================
+
+The final results of the model over the Test Set are shown in the following table:  
+
+Test Set | Sensitivity | Specificity | Balanced Accuracy
+---------|------------ |------------ | -----------------  
+Class: A |   0.9779541 |   0.9974901 |         0.9877221  
+Class: B |   0.9772423 |   0.9908690 |         0.9840557  
+Class: C |   0.9486448 |   0.9941030 |         0.9713739  
+Class: D |   0.9789644 |   0.9885023 |         0.9837333  
+Class: E |   0.9903181 |   0.9984375 |         0.9943778  
+
+The final accuracy over the validation set was 0.9755289

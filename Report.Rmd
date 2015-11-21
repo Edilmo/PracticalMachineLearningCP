@@ -1,10 +1,20 @@
 ---
-title: "Report"
+title: "Report - Practical Machine Learning Project"
 output: html_document
 ---
 
+# Abstract
+In this report we build a model to classify the Unilateral Dumbbell Biceps Curl. The data was taken from [this study](http://groupware.les.inf.puc-rio.br/har) with all the details about how the collecting process was executed. The model built is quite simple but very robust, 97,55% of accuracy. It is based in some specific dimensionality reduction steps using PCA and a tree-based prediction model using random forrest algorithm.
 
-First, lets get the data clean.
+
+# Introduction
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).  
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. We made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg).  
+
+
+# Analysis
+First, lets get the data clean. Basically we are interested in the raw data of the sensors, so we delete al the sumarization variables, time-related variables and identification variables.
 ```{r echo=FALSE, cache=TRUE}
 # DOwnloading the data sets if necessary
 if(!file.exists("pml-training.csv"))
@@ -59,9 +69,12 @@ testing$total_accel_arm <- factor(testing$total_accel_arm)
 testing$total_accel_dumbbell <- factor(testing$total_accel_dumbbell)
 testing$total_accel_forearm <- factor(testing$total_accel_forearm)
 ```
+This cleaning procedure comes from two facts and one hipotesis:
+- Fact 1 - Each sensor is independent: this means that every sensor is not connected to the other and it is positioned in a way that is only capturing information about the downbell or just one of the body parts important for the study. 
+- Fact 2 - Each output category points to specific and independent movements: this means that the movement asociated with one category it is not present in the movement of the others.
+- Hypothesis: the presence of one movement can be detected with a specific subset of measures in a specific subset of sensors.
 
-
-Now lets gets some cross validation data sets.
+In order to validate our hypothesis lets perform some exploratory analysis. Specifically we are going to make some clustering plots. But before start our analysis, lets gets some cross validation data sets: 60% for training, 20% for testing and 20% for validation.
 ```{r, echo=FALSE, cache=TRUE}
 library(caret)
 set.seed(32343)
@@ -77,10 +90,58 @@ test <- testTemp[-inTest,]
 validate <- testTemp[-inTest,]
 ```
 
-At this point lets reduce the dimensionality of our data set using PCA.
+## Belt sensor analysis
+Now lets construct some clusters using k-means over the data of the Belt sensor
+```{r, echo=FALSE, cache=TRUE}
+library(ggplot2)
+tempNames <- names(train)[-grep("total_accel", names(train))]
+
+kmeansBelt <- kmeans(train[,tempNames[grep("_belt", tempNames)]], centers = 5)
+qplot(classe, data = data.frame(classe=train$classe, cluster=factor(kmeansBelt$cluster)), fill = cluster, binwidth = 2, main = "Classes by cluster for Belt Sensor")
+image(t(train[,tempNames[grep("_belt", tempNames)]])[, order(kmeansBelt$cluster)], yaxt = "n", main = "Clustered Data for Belt Sensor")
+```
+
+In the above plots we can see a histogram and a heat map of the belt sensor data clustered with 5 centroids using k-means algorithm. In the plots you can see: one cluster that is only associated with the E class, and how well these clusters can be difirentiated in the data (heat map). These facts can be see it as the first evidence that supports our hypothesis: there is a strong signal present in the belt sensor that is very correlated to the class E.
+
+## Dumbbell sensor analysis
+Now lets construct some clusters using k-means over the data of the Dumbbell sensor
+```{r, echo=FALSE, cache=TRUE}
+kmeansDumbbell <- kmeans(train[,tempNames[grep("_dumbbell", tempNames)]], centers = 8)
+qplot(classe, data = data.frame(classe=train$classe, cluster=factor(kmeansDumbbell$cluster)), fill = cluster, binwidth = 2, main = "Classes by cluster for Dumbbell Sensor")
+image(t(train[,tempNames[grep("_dumbbell", tempNames)]])[, order(kmeansDumbbell$cluster)], yaxt = "n", main = "Clustered Data for Dumbbell Sensor")
+```
+
+In the above plots we can see a histogram and a heat map of the dumbbell sensor data clustered with 8 centroids using k-means algorithm. In the plots you can see: cluster combinations that are NOT associated with the C and D class, and how well these clusters can be difirentiated in the data (heat map). These facts can be see it as the second evidence that supports our hypothesis: there are strong signals present in the dumbbell sensor that allows clearly difirentiate some classes.
+
+## Arm sensor analysis
+Now lets construct some clusters using k-means over the data of the Arm sensor
+```{r, echo=FALSE, cache=TRUE}
+kmeansArm <- kmeans(train[,c(tempNames[grep("_arm_", tempNames)], tempNames[grep("_arm$", tempNames)])], centers = 10)
+qplot(classe, data = data.frame(classe=train$classe, cluster=factor(kmeansArm$cluster)), fill = cluster, binwidth = 2, main = "Classes by cluster for Arm Sensor")
+image(t(train[,c(tempNames[grep("_arm_", tempNames)], tempNames[grep("_arm$", tempNames)])])[, order(kmeansArm$cluster)], yaxt = "n", main = "Clustered Data for Arm Sensor")
+```
+
+In the above plots we can see a histogram and a heat map of the Arm sensor data clustered with 10 centroids using k-means algorithm. In the plots you can see: one cluster that is NOT associated with the D class, other not present in the A class, and how well these clusters can be difirentiated in the data (heat map). These facts can be see it as the second evidence that supports our hypothesis: there are strong signals present in the dumbbell sensor that allows clearly difirentiate some classes.
+
+## Forearm sensor analysis
+Now lets construct some clusters using k-means over the data of the Forearm sensor
+```{r, echo=FALSE, cache=TRUE}
+kmeansForearm <- kmeans(train[,tempNames[grep("_forearm", tempNames)]], centers = 12)
+qplot(classe, data = data.frame(classe=train$classe, cluster=factor(kmeansForearm$cluster)), fill = cluster, binwidth = 2, main = "Classes by cluster for Forearm Sensor")
+image(t(train[,tempNames[grep("_forearm", tempNames)]])[, order(kmeansForearm$cluster)], yaxt = "n", main = "Clustered Data for Forearm Sensor")
+```
+
+In the above plots we can see a histogram and a heat map of the belt sensor data clustered with 12 centroids using k-means algorithm. In the plots you can see: one cluster that is NOT associated with the A class, and how well some clusters can be difirentiated in the data (heat map). These facts can be see it as evidence that supports, in some sense, our hypothesis: there is a strong signal present in the forearm sensor that is very correlated to the classes associated with common mistakes.
+
+**In order to iterate over the above exploratory analysis, a [Shiny application](https://edilmo.shinyapps.io/PracticalMachineLearningCP) was built.**
+
+# Model
+The results of our analysis give support to our hypothesis which indicates that discriminative algorithm as random forrest could be a go approach to our prediction problem. The only problem is the amount of variables. There to many variables and for these kind of cases the performance of random forrest could be a problem.
+Our approach to the dimensionality problem is use PCA separately for each group of variables associated to the same sensor. We are omitting the mathematical details but the PCA components of the entire data set are not the same that the composition of the PCA components of the group of variables asociated to each sensor. This procedure allows to "isolate" the data of each sensor a little bit and increase the "independence"" between them.
+
+Lets reduce the dimensionality of our data set using PCA.
 
 ```{r, echo=FALSE, cache=TRUE}
-tempNames <- names(train)[-grep("total_accel", names(train))]
 preProcBelt <- preProcess(train[,tempNames[grep("_belt", tempNames)]],method="pca", thresh = 0.80)
 preProcForearm <- preProcess(train[,tempNames[grep("_forearm", tempNames)]],method="pca", thresh = 0.80)
 preProcDumbbell <- preProcess(train[,tempNames[grep("_dumbbell", tempNames)]],method="pca", thresh = 0.80)
@@ -89,9 +150,9 @@ preProcArm <- preProcess(train[,c(tempNames[grep("_arm_", tempNames)], tempNames
 ```
 
 - The variables measured by the Belt Sensor are `r preProcBelt$dim[2]`. And the number of Principal Components are `r preProcBelt$numComp`.
-- The variables measured by the Belt Sensor are `r preProcForearm$dim[2]`. And the number of Principal Components are `r preProcForearm$numComp`.
-- The variables measured by the Belt Sensor are `r preProcDumbbell$dim[2]`. And the number of Principal Components are `r preProcDumbbell$numComp`.
-- The variables measured by the Belt Sensor are `r preProcArm$dim[2]`. And the number of Principal Components are `r preProcArm$numComp`.
+- The variables measured by the Forearm Sensor are `r preProcForearm$dim[2]`. And the number of Principal Components are `r preProcForearm$numComp`.
+- The variables measured by the Dumbbell Sensor are `r preProcDumbbell$dim[2]`. And the number of Principal Components are `r preProcDumbbell$numComp`.
+- The variables measured by the Arm Sensor are `r preProcArm$dim[2]`. And the number of Principal Components are `r preProcArm$numComp`.
 
 Now, let's use our new components to generate new training data using that dimensions:
 
@@ -129,10 +190,27 @@ validateArm <- predict(preProcArm, validate[,c(tempNames[grep("_arm_", tempNames
 validateAllPCA <- data.frame(validateArm, validateDumbbell, validateForearm, validateBelt, classe=validate$classe)
 validatePredAllPCA <- predict(modFitAllPCA,validateAllPCA)
 confMtxValidateAllPCA <- confusionMatrix(validate$classe, validatePredAllPCA)
+
+
+testOriginalBelt <- predict(preProcBelt, testing[,tempNames[grep("_belt", tempNames)]])
+testOriginalForearm <- predict(preProcForearm, testing[,tempNames[grep("_forearm", tempNames)]])
+testOriginalDumbbell <- predict(preProcDumbbell, testing[,tempNames[grep("_dumbbell", tempNames)]])
+testOriginalArm <- predict(preProcArm, testing[,c(tempNames[grep("_arm_", tempNames)], tempNames[grep("_arm$", tempNames)])])
+
+testOriginalAllPCA <- data.frame(testOriginalArm, testOriginalDumbbell, testOriginalForearm, testOriginalBelt)
+testOriginalPredAllPCA <- predict(modFitAllPCA,testOriginalAllPCA)
 ```
 
+Different iterations were performed using the test data but here we are just presenting the results of the final iteration:
 
 ```{r, echo=FALSE, cache=TRUE}
+library(knitr)
+kable(confMtxTestAllPCA$byClass)
 ```
 
+# Results
+In order to present our final results we execute our model against the validation set:
 
+```{r, echo=FALSE, cache=TRUE}
+confMtxValidateAllPCA$overall
+```
